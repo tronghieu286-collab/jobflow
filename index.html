@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="JobFlow Pro">
+    <title>JobFlow Pro - Quản lý Công việc Thực dụng</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/906/906334.png">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/906/906334.png">
+    <script>
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(err => console.warn('SW:', err));
+            });
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .overdue-pulse { animation: pulse-red 2s infinite; }
+        @keyframes pulse-red {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.4); }
+            50% { border-color: rgba(239, 68, 68, 1); }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
+
+    <!-- Thanh điều hướng trên cùng -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5">
+                <div class="bg-indigo-600 text-white p-2 rounded-xl shadow-sm">
+                    <i data-lucide="layers" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight text-slate-800 leading-none">JobFlow Pro</h1>
+                    <div class="flex items-center gap-1.5 mt-1">
+                        <span id="sync-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                        <span id="sync-status" class="text-[11px] font-medium text-slate-500">Đang kết nối đám mây...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Thanh tìm kiếm nhanh -->
+            <div class="flex items-center gap-2 flex-1 max-w-md mx-2">
+                <div class="relative w-full">
+                    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input type="text" id="search-input" placeholder="Tìm tên job, khách hàng, thẻ..." 
+                        class="w-full pl-9 pr-4 py-1.5 bg-slate-100 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 rounded-xl text-sm transition-all outline-none">
+                </div>
+            </div>
+
+            <!-- Nút hành động -->
+            <div class="flex items-center gap-2">
+                <button id="install-app-btn" onclick="installPWA()" title="Cài đặt ứng dụng về máy"
+                    class="hidden bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-3 py-2 rounded-xl border border-emerald-200 text-xs font-semibold items-center gap-1.5 transition-all">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Cài App</span>
+                </button>
+                <button id="notif-btn" onclick="requestNotificationPermission()" title="Bật thông báo nhắc việc"
+                    class="p-2 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors relative">
+                    <i data-lucide="bell" class="w-5 h-5"></i>
+                    <span id="notif-badge" class="hidden absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+                </button>
+                <button onclick="openSyncModal()" title="Mã đồng bộ thiết bị"
+                    class="p-2 text-slate-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors">
+                    <i data-lucide="smartphone" class="w-5 h-5"></i>
+                </button>
+                <button onclick="openTaskModal()" 
+                    class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-sm shadow-indigo-200 transition-all active:scale-95">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    <span>Thêm Job</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Bảng thống kê nhanh -->
+    <section class="max-w-7xl w-full mx-auto px-4 pt-5 pb-2">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div onclick="filterByQuick('all')" class="cursor-pointer bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-indigo-300 transition-all">
+                <div class="flex items-center justify-between text-slate-500 text-xs font-medium">
+                    <span>TỔNG JOB ĐANG CHẠY</span>
+                    <i data-lucide="briefcase" class="w-4 h-4 text-indigo-500"></i>
+                </div>
+                <div class="mt-1.5 flex items-baseline gap-2">
+                    <span id="stat-total" class="text-2xl font-bold text-slate-800">0</span>
+                    <span class="text-xs text-slate-400">việc</span>
+                </div>
+            </div>
+
+            <div onclick="filterByQuick('overdue')" class="cursor-pointer bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-red-300 transition-all">
+                <div class="flex items-center justify-between text-red-600 text-xs font-semibold">
+                    <span>QUÁ HẠN / TỒN ĐỌNG</span>
+                    <i data-lucide="alert-circle" class="w-4 h-4 text-red-500"></i>
+                </div>
+                <div class="mt-1.5 flex items-baseline gap-2">
+                    <span id="stat-overdue" class="text-2xl font-bold text-red-600">0</span>
+                    <span class="text-xs text-red-400">cần xử lý gấp</span>
+                </div>
+            </div>
+
+            <div onclick="filterByQuick('today')" class="cursor-pointer bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-amber-300 transition-all">
+                <div class="flex items-center justify-between text-amber-600 text-xs font-semibold">
+                    <span>DEADLINE HÔM NAY</span>
+                    <i data-lucide="clock" class="w-4 h-4 text-amber-500"></i>
+                </div>
+                <div class="mt-1.5 flex items-baseline gap-2">
+                    <span id="stat-today" class="text-2xl font-bold text-amber-600">0</span>
+                    <span class="text-xs text-amber-500">đến hạn</span>
+                </div>
+            </div>
+
+            <div onclick="filterByQuick('done')" class="cursor-pointer bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm hover:border-emerald-300 transition-all">
+                <div class="flex items-center justify-between text-emerald-600 text-xs font-semibold">
+                    <span>HOÀN THÀNH</span>
+                    <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500"></i>
+                </div>
+                <div class="mt-1.5 flex items-baseline gap-2">
+                    <span id="stat-done" class="text-2xl font-bold text-emerald-600">0</span>
+                    <span id="stat-rate" class="text-xs text-emerald-500">0%</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Bộ lọc trạng thái & Chế độ xem -->
+    <section class="max-w-7xl w-full mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-1.5 bg-slate-200/70 p-1 rounded-xl overflow-x-auto max-w-full">
+            <button onclick="setFilter('active')" data-filter="active" class="filter-tab px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-800 shadow-sm transition-all whitespace-nowrap">
+                Đang xử lý & Tồn đọng
+            </button>
+            <button onclick="setFilter('backlog')" data-filter="backlog" class="filter-tab px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all whitespace-nowrap">
+                Việc tồn đọng (Backlog)
+            </button>
+            <button onclick="setFilter('high')" data-filter="high" class="filter-tab px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all whitespace-nowrap">
+                Ưu tiên cao 🔥
+            </button>
+            <button onclick="setFilter('done')" data-filter="done" class="filter-tab px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all whitespace-nowrap">
+                Đã xong
+            </button>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+            <span>Sắp xếp:</span>
+            <select id="sort-select" onchange="renderTasks()" class="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 outline-none">
+                <option value="deadline">Deadline gần nhất</option>
+                <option value="priority">Mức độ ưu tiên</option>
+                <option value="newest">Mới tạo gần đây</option>
+            </select>
+        </div>
+    </section>
+
+    <!-- Khu vực hiển thị chính -->
+    <main class="max-w-7xl w-full mx-auto px-4 pb-12 flex-1">
+        <!-- Cảnh báo việc sắp đến hạn -->
+        <div id="urgent-banner" class="hidden mb-4 bg-gradient-to-r from-red-50 to-amber-50 border border-red-200 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="bg-red-100 text-red-600 p-2 rounded-xl">
+                    <i data-lucide="bell-ring" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h3 class="text-sm font-bold text-red-900" id="urgent-title">Có công việc sắp đến hạn!</h3>
+                    <p class="text-xs text-red-700" id="urgent-desc">Kiểm tra ngay để tránh trễ tiến độ.</p>
+                </div>
+            </div>
+            <button onclick="setFilter('active')" class="text-xs font-semibold bg-white text-red-600 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 shrink-0">
+                Xem ngay
+            </button>
+        </div>
+
+        <!-- Grid chứa các thẻ Job -->
+        <div id="tasks-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+        <!-- Trạng thái trống -->
+        <div id="empty-state" class="hidden text-center py-16 bg-white rounded-3xl border border-dashed border-slate-300 mt-4">
+            <div class="bg-slate-100 w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 text-slate-400">
+                <i data-lucide="clipboard-check" class="w-7 h-7"></i>
+            </div>
+            <h3 class="text-base font-semibold text-slate-800">Không có công việc nào ở mục này</h3>
+            <p class="text-xs text-slate-500 mt-1 max-w-xs mx-auto">Bấm "Thêm Job" ở góc trên để tạo đầu việc mới và theo dõi tiến độ.</p>
+        </div>
+    </main>
+
+    <!-- Modal Thêm / Sửa Job -->
+    <div id="task-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-100 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 id="modal-title" class="font-bold text-lg text-slate-800">Thêm Job mới</h2>
+                <button onclick="closeTaskModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <form id="task-form" onsubmit="saveTask(event)" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                <input type="hidden" id="task-id">
+                
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Tên công việc / Dự án *</label>
+                    <input type="text" id="task-title" required placeholder="VD: Thiết kế banner chiến dịch Tết..."
+                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Khách hàng / Nhóm</label>
+                        <input type="text" id="task-client" placeholder="VD: Anh Nam, Team Marketing..."
+                            class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Mức độ ưu tiên</label>
+                        <select id="task-priority" class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                            <option value="high">🔥 Cao (Gấp)</option>
+                            <option value="medium" selected>⚡ Trung bình</option>
+                            <option value="low">☕ Thấp (Làm sau)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Hạn chót (Deadline)</label>
+                        <input type="datetime-local" id="task-deadline"
+                            class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Trạng thái</label>
+                        <select id="task-status" class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none">
+                            <option value="doing">🚀 Đang thực hiện</option>
+                            <option value="backlog">⏳ Tồn đọng / Chờ xử lý</option>
+                            <option value="review">👀 Chờ duyệt / Phản hồi</option>
+                            <option value="done">✅ Đã hoàn thành</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Checklist các đầu việc nhỏ bên trong Job -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">Đầu việc con (Checklist)</label>
+                        <button type="button" onclick="addSubtaskInput()" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Thêm bước
+                        </button>
+                    </div>
+                    <div id="subtasks-editor" class="space-y-2"></div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Ghi chú chi tiết / Link tài liệu</label>
+                    <textarea id="task-notes" rows="2" placeholder="Link Google Drive, yêu cầu sửa đổi..."
+                        class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 outline-none"></textarea>
+                </div>
+
+                <div class="pt-2 flex items-center justify-end gap-2">
+                    <button type="button" onclick="closeTaskModal()" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Hủy</button>
+                    <button type="submit" class="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm">Lưu công việc</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Đồng bộ Điện thoại & Máy tính -->
+    <div id="sync-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 space-y-4">
+            <div class="flex items-center justify-between">
+                <h3 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-5 h-5 text-indigo-600"></i>
+                    Đồng bộ đa thiết bị
+                </h3>
+                <button onclick="closeSyncModal()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <p class="text-xs text-slate-600 leading-relaxed">
+                Dữ liệu của bạn được tự động lưu trữ trên đám mây theo <strong>Mã Không Gian Làm Việc</strong> dưới đây. Hãy nhập mã này trên điện thoại hoặc máy tính khác để đồng bộ tức thì:
+            </p>
+            <div class="bg-slate-100 p-3 rounded-xl flex items-center justify-between gap-2">
+                <code id="workspace-id-display" class="text-xs font-mono font-bold text-indigo-700 break-all">Đang tải...</code>
+                <button onclick="copyWorkspaceId()" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 shrink-0">
+                    Sao chép
+                </button>
+            </div>
+            <div class="pt-2 border-t border-slate-100">
+                <label class="block text-xs font-semibold text-slate-700 mb-1.5">Hoặc kết nối vào mã có sẵn từ thiết bị khác:</label>
+                <div class="flex gap-2">
+                    <input type="text" id="custom-workspace-input" placeholder="Dán mã không gian làm việc..."
+                        class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-indigo-500">
+                    <button onclick="switchWorkspace()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold hover:bg-indigo-700">
+                        Kết nối
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Thông báo Toast (Thay thế alert) -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl text-xs font-medium flex items-center gap-2.5 translate-y-20 opacity-0 transition-all duration-300 z-50">
+        <i data-lucide="info" class="w-4 h-4 text-indigo-400"></i>
+        <span id="toast-msg">Thông báo</span>
+    </div>
+
+    <!-- Firebase SDK & Logic Ứng Dụng -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Cấu hình Firebase cá nhân của bạn
+        const firebaseConfig = {
+            apiKey: "AIzaSyAwNQoaF3SQcBGw7YiE-ILvynjAKM6BQ00",
+            authDomain: "jobflow-466a5.firebaseapp.com",
+            projectId: "jobflow-466a5",
+            storageBucket: "jobflow-466a5.firebasestorage.app",
+            messagingSenderId: "233183181992",
+            appId: "1:233183181992:web:e1983dc18986a15ff3969d",
+            measurementId: "G-VJS7BGFSRV"
+        };
+        const appId = 'jobflow-pro-personal';
+
+        let app = null;
+        let auth = null;
+        let db = null;
+        let useCloud = false;
+
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            useCloud = true;
+        } catch (e) {
+            console.warn("Chuyển sang chế độ lưu cục bộ:", e);
+        }
+
+        let currentUser = null;
+        let workspaceId = localStorage.getItem('jobflow_workspace_id') || 'personal_workspace';
+        let tasks = [];
+        let currentFilter = 'active';
+        let unsubscribeTasks = null;
+        let notifiedTaskIds = new Set();
+
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+
+        function getSampleTasks() {
+            const now = new Date();
+            const inTwoHours = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 16);
+            const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
+
+            return [
+                {
+                    id: 'job_' + Date.now() + '_1',
+                    title: 'Hoàn thiện báo giá & Timeline dự án Website',
+                    client: 'Công ty Minh Anh',
+                    priority: 'high',
+                    status: 'doing',
+                    deadline: inTwoHours,
+                    notes: 'Gửi file PDF qua Zalo trước 5h chiều.',
+                    subtasks: [
+                        { text: 'Bóc tách tính năng trang chủ', done: true },
+                        { text: 'Tính chi phí server & domain', done: false }
+                    ],
+                    createdAt: Date.now()
+                },
+                {
+                    id: 'job_' + Date.now() + '_2',
+                    title: 'Chỉnh sửa video recap sự kiện tuần trước',
+                    client: 'Nội bộ Marketing',
+                    priority: 'medium',
+                    status: 'backlog',
+                    deadline: yesterday,
+                    notes: 'Đang tồn đọng do thiếu footage góc rộng.',
+                    subtasks: [
+                        { text: 'Cắt ghép intro', done: true },
+                        { text: 'Chèn phụ đề tiếng Việt', done: false }
+                    ],
+                    createdAt: Date.now() - 10000
+                }
+            ];
+        }
+
+        function loadLocalFallback() {
+            const localData = localStorage.getItem('jobflow_tasks_' + workspaceId);
+            if (localData) {
+                tasks = JSON.parse(localData);
+            } else {
+                tasks = getSampleTasks();
+                saveLocalFallback();
+            }
+            document.getElementById('workspace-id-display').textContent = workspaceId;
+            updateDashboard();
+            renderTasks();
+            updateSyncStatus(false, "Chế độ ngoại tuyến / Xem trước");
+        }
+
+        function saveLocalFallback() {
+            localStorage.setItem('jobflow_tasks_' + workspaceId, JSON.stringify(tasks));
+        }
+
+        // Khởi tạo kết nối Firebase an toàn
+        async function initAppData() {
+            const hashId = window.location.hash.replace('#sync=', '').trim();
+            if (hashId) {
+                workspaceId = hashId;
+                localStorage.setItem('jobflow_workspace_id', workspaceId);
+            }
+            document.getElementById('workspace-id-display').textContent = workspaceId;
+
+            if (!useCloud || !auth) {
+                loadLocalFallback();
+                return;
+            }
+
+            try {
+                await signInAnonymously(auth);
+            } catch (error) {
+                console.warn("Không thể đăng nhập đám mây ở môi trường này, dùng lưu trữ cục bộ:", error);
+                useCloud = false;
+                loadLocalFallback();
+            }
+        }
+
+        if (auth) {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    currentUser = user;
+                    if (!localStorage.getItem('jobflow_workspace_id') && !window.location.hash) {
+                        workspaceId = user.uid;
+                        localStorage.setItem('jobflow_workspace_id', workspaceId);
+                    }
+                    document.getElementById('workspace-id-display').textContent = workspaceId;
+                    subscribeToTasks();
+                }
+            });
+        }
+
+        initAppData();
+
+        function subscribeToTasks() {
+            if (!useCloud || !currentUser || !workspaceId) return;
+            if (unsubscribeTasks) unsubscribeTasks();
+
+            updateSyncStatus(true, "Đang đồng bộ thời gian thực");
+            const tasksCol = collection(db, 'artifacts', appId, 'public', 'data', `workspace_${workspaceId}`);
+
+            unsubscribeTasks = onSnapshot(tasksCol, async (snapshot) => {
+                tasks = [];
+                snapshot.forEach((docSnap) => {
+                    tasks.push({ id: docSnap.id, ...docSnap.data() });
+                });
+
+                if (tasks.length === 0 && !sessionStorage.getItem('seeded_' + workspaceId)) {
+                    sessionStorage.setItem('seeded_' + workspaceId, 'true');
+                    const samples = getSampleTasks();
+                    for (const item of samples) {
+                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', `workspace_${workspaceId}`, item.id), item);
+                    }
+                    return;
+                }
+
+                saveLocalFallback();
+                updateDashboard();
+                renderTasks();
+                checkDeadlines();
+                updateSyncStatus(true, "Đã đồng bộ đám mây");
+            }, (error) => {
+                console.warn("Lỗi đồng bộ Firestore, chuyển sang dữ liệu cục bộ:", error);
+                useCloud = false;
+                loadLocalFallback();
+            });
+        }
+
+        function updateSyncStatus(isOnline, text) {
+            const dot = document.getElementById('sync-dot');
+            const label = document.getElementById('sync-status');
+            if (dot) dot.className = `w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`;
+            if (label) label.textContent = text;
+        }
+
+        function getDeadlineInfo(deadlineStr, status) {
+            if (!deadlineStr) return { label: 'Không có hạn', isOverdue: false, isToday: false, isSoon: false, color: 'text-slate-400 bg-slate-100' };
+            
+            const deadline = new Date(deadlineStr);
+            const now = new Date();
+            const diffMs = deadline - now;
+            const diffHours = diffMs / (1000 * 60 * 60);
+
+            const isToday = deadline.toDateString() === now.toDateString();
+            const formatted = deadline.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                              deadline.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+
+            if (status === 'done') {
+                return { label: formatted, isOverdue: false, isToday, isSoon: false, color: 'text-emerald-700 bg-emerald-50' };
+            }
+
+            if (diffMs < 0) {
+                const overdueHours = Math.abs(Math.floor(diffHours));
+                const overdueText = overdueHours > 24 ? `Trễ ${Math.floor(overdueHours/24)} ngày` : `Trễ ${overdueHours} giờ`;
+                return { label: `${overdueText} (${formatted})`, isOverdue: true, isToday, isSoon: false, color: 'text-red-700 bg-red-100 font-semibold' };
+            }
+
+            if (diffHours <= 3) {
+                return { label: `Sắp đến hạn: ${formatted}`, isOverdue: false, isToday, isSoon: true, color: 'text-amber-700 bg-amber-100 font-semibold' };
+            }
+
+            if (isToday) {
+                return { label: `Hôm nay, ${deadline.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`, isOverdue: false, isToday: true, isSoon: false, color: 'text-indigo-700 bg-indigo-50 font-medium' };
+            }
+
+            return { label: formatted, isOverdue: false, isToday: false, isSoon: false, color: 'text-slate-600 bg-slate-100' };
+        }
+
+        function updateDashboard() {
+            const activeTasks = tasks.filter(t => t.status !== 'done');
+            const overdueTasks = activeTasks.filter(t => getDeadlineInfo(t.deadline, t.status).isOverdue || t.status === 'backlog');
+            const todayTasks = activeTasks.filter(t => getDeadlineInfo(t.deadline, t.status).isToday);
+            const doneTasks = tasks.filter(t => t.status === 'done');
+
+            document.getElementById('stat-total').textContent = activeTasks.length;
+            document.getElementById('stat-overdue').textContent = overdueTasks.length;
+            document.getElementById('stat-today').textContent = todayTasks.length;
+            document.getElementById('stat-done').textContent = doneTasks.length;
+            
+            const rate = tasks.length > 0 ? Math.round((doneTasks.length / tasks.length) * 100) : 0;
+            document.getElementById('stat-rate').textContent = `${rate}%`;
+
+            const urgentTasks = activeTasks.filter(t => {
+                const info = getDeadlineInfo(t.deadline, t.status);
+                return info.isOverdue || info.isSoon;
+            });
+
+            const banner = document.getElementById('urgent-banner');
+            if (urgentTasks.length > 0) {
+                banner.classList.remove('hidden');
+                document.getElementById('urgent-title').textContent = `Bạn có ${urgentTasks.length} job quá hạn hoặc sắp đến deadline trong 3 giờ tới!`;
+                document.getElementById('urgent-desc').textContent = `Ưu tiên xử lý: "${urgentTasks[0].title}"`;
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        window.renderTasks = function() {
+            const container = document.getElementById('tasks-container');
+            const emptyState = document.getElementById('empty-state');
+            const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
+            const sortBy = document.getElementById('sort-select').value;
+
+            let filtered = tasks.filter(task => {
+                const matchSearch = !searchQuery || 
+                    task.title.toLowerCase().includes(searchQuery) || 
+                    (task.client && task.client.toLowerCase().includes(searchQuery)) ||
+                    (task.notes && task.notes.toLowerCase().includes(searchQuery));
+                if (!matchSearch) return false;
+
+                if (currentFilter === 'active') return task.status !== 'done';
+                if (currentFilter === 'backlog') return task.status === 'backlog' || (task.status !== 'done' && getDeadlineInfo(task.deadline, task.status).isOverdue);
+                if (currentFilter === 'high') return task.status !== 'done' && task.priority === 'high';
+                if (currentFilter === 'done') return task.status === 'done';
+                if (currentFilter === 'overdue') return task.status !== 'done' && getDeadlineInfo(task.deadline, task.status).isOverdue;
+                if (currentFilter === 'today') return task.status !== 'done' && getDeadlineInfo(task.deadline, task.status).isToday;
+                return true;
+            });
+
+            filtered.sort((a, b) => {
+                if (sortBy === 'deadline') {
+                    if (!a.deadline) return 1;
+                    if (!b.deadline) return -1;
+                    return new Date(a.deadline) - new Date(b.deadline);
+                }
+                if (sortBy === 'priority') {
+                    const weight = { high: 3, medium: 2, low: 1 };
+                    return (weight[b.priority] || 0) - (weight[a.priority] || 0);
+                }
+                return (b.createdAt || 0) - (a.createdAt || 0);
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            container.innerHTML = filtered.map(task => {
+                const deadlineInfo = getDeadlineInfo(task.deadline, task.status);
+                const subtasks = task.subtasks || [];
+                const doneSub = subtasks.filter(s => s.done).length;
+                const progress = subtasks.length > 0 ? Math.round((doneSub / subtasks.length) * 100) : (task.status === 'done' ? 100 : 0);
+
+                const priorityBadge = {
+                    high: '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-red-50 text-red-600 border border-red-100">🔥 Gấp</span>',
+                    medium: '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-600 border border-blue-100">⚡ Bình thường</span>',
+                    low: '<span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-600">☕ Thấp</span>'
+                }[task.priority || 'medium'];
+
+                const statusBadge = {
+                    doing: '<span class="text-[11px] font-semibold text-indigo-600">● Đang làm</span>',
+                    backlog: '<span class="text-[11px] font-semibold text-amber-600">● Tồn đọng</span>',
+                    review: '<span class="text-[11px] font-semibold text-purple-600">● Chờ duyệt</span>',
+                    done: '<span class="text-[11px] font-semibold text-emerald-600">✓ Hoàn thành</span>'
+                }[task.status || 'doing'];
+
+                return `
+                <div class="bg-white rounded-2xl p-4 border ${deadlineInfo.isOverdue ? 'border-red-300 overdue-pulse' : 'border-slate-200/90'} shadow-sm hover:shadow-md transition-all flex flex-col justify-between gap-3">
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                ${priorityBadge}
+                                ${task.client ? `<span class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700">${escapeHtml(task.client)}</span>` : ''}
+                            </div>
+                            ${statusBadge}
+                        </div>
+
+                        <h3 class="font-bold text-slate-800 text-base leading-snug ${task.status === 'done' ? 'line-through text-slate-400' : ''}">
+                            ${escapeHtml(task.title)}
+                        </h3>
+
+                        ${task.notes ? `<p class="text-xs text-slate-500 mt-1.5 line-clamp-2">${escapeHtml(task.notes)}</p>` : ''}
+
+                        ${subtasks.length > 0 ? `
+                            <div class="mt-3 pt-2.5 border-t border-slate-100 space-y-1.5">
+                                <div class="flex items-center justify-between text-[11px] text-slate-500 mb-1">
+                                    <span>Tiến độ đầu việc</span>
+                                    <span class="font-semibold">${doneSub}/${subtasks.length} (${progress}%)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mb-2">
+                                    <div class="bg-indigo-600 h-full transition-all duration-300" style="width: ${progress}%"></div>
+                                </div>
+                                ${subtasks.map((sub, idx) => `
+                                    <label class="flex items-start gap-2 text-xs cursor-pointer group">
+                                        <input type="checkbox" ${sub.done ? 'checked' : ''} onchange="toggleSubtask('${task.id}', ${idx})"
+                                            class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="${sub.done ? 'line-through text-slate-400' : 'text-slate-700 group-hover:text-slate-900'}">${escapeHtml(sub.text)}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <div class="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <div class="px-2.5 py-1 rounded-lg text-[11px] flex items-center gap-1.5 ${deadlineInfo.color}">
+                            <i data-lucide="calendar-clock" class="w-3.5 h-3.5 shrink-0"></i>
+                            <span class="truncate max-w-[160px]">${deadlineInfo.label}</span>
+                        </div>
+
+                        <div class="flex items-center gap-1">
+                            ${task.status !== 'done' ? `
+                                <button onclick="markTaskDone('${task.id}')" title="Đánh dấu hoàn thành"
+                                    class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                                    <i data-lucide="check-circle" class="w-4 h-4"></i>
+                                </button>
+                            ` : ''}
+                            <button onclick="editTask('${task.id}')" title="Chỉnh sửa"
+                                class="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="deleteTask('${task.id}')" title="Xóa"
+                                class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        };
+
+        document.getElementById('search-input').addEventListener('input', renderTasks);
+
+        window.setFilter = function(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-tab').forEach(btn => {
+                if (btn.dataset.filter === filter) {
+                    btn.className = 'filter-tab px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-800 shadow-sm transition-all whitespace-nowrap';
+                } else {
+                    btn.className = 'filter-tab px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all whitespace-nowrap';
+                }
+            });
+            renderTasks();
+        };
+
+        window.filterByQuick = function(type) {
+            if (type === 'all') setFilter('active');
+            else if (type === 'overdue') setFilter('backlog');
+            else if (type === 'done') setFilter('done');
+            else {
+                currentFilter = type;
+                renderTasks();
+            }
+        };
+
+        async function persistTask(taskData) {
+            const idx = tasks.findIndex(t => t.id === taskData.id);
+            if (idx >= 0) tasks[idx] = taskData;
+            else tasks.unshift(taskData);
+
+            saveLocalFallback();
+            updateDashboard();
+            renderTasks();
+
+            if (useCloud && currentUser) {
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', `workspace_${workspaceId}`, taskData.id), taskData);
+                } catch (e) {
+                    console.warn("Lỗi ghi đám mây:", e);
+                }
+            }
+        }
+
+        window.toggleSubtask = async function(taskId, subIndex) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task || !task.subtasks) return;
+            task.subtasks[subIndex].done = !task.subtasks[subIndex].done;
+            await persistTask(task);
+        };
+
+        window.markTaskDone = async function(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+            task.status = 'done';
+            await persistTask(task);
+            showToast("Đã hoàn thành công việc! 🎉");
+        };
+
+        window.deleteTask = async function(taskId) {
+            tasks = tasks.filter(t => t.id !== taskId);
+            saveLocalFallback();
+            updateDashboard();
+            renderTasks();
+            showToast("Đã xóa công việc");
+
+            if (useCloud && currentUser) {
+                try {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `workspace_${workspaceId}`, taskId));
+                } catch (e) {
+                    console.warn("Lỗi xóa đám mây:", e);
+                }
+            }
+        };
+
+        window.openTaskModal = function() {
+            document.getElementById('task-form').reset();
+            document.getElementById('task-id').value = '';
+            document.getElementById('modal-title').textContent = 'Thêm Job mới';
+            document.getElementById('subtasks-editor').innerHTML = '';
+            
+            const today = new Date();
+            today.setHours(17, 0, 0, 0);
+            const tzOffset = today.getTimezoneOffset() * 60000;
+            document.getElementById('task-deadline').value = new Date(today - tzOffset).toISOString().slice(0, 16);
+
+            document.getElementById('task-modal').classList.remove('hidden');
+            document.getElementById('task-modal').classList.add('flex');
+        };
+
+        window.closeTaskModal = function() {
+            document.getElementById('task-modal').classList.add('hidden');
+            document.getElementById('task-modal').classList.remove('flex');
+        };
+
+        window.addSubtaskInput = function(text = '', done = false) {
+            const container = document.getElementById('subtasks-editor');
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-2';
+            div.innerHTML = `
+                <input type="checkbox" ${done ? 'checked' : ''} class="sub-done rounded border-slate-300 text-indigo-600">
+                <input type="text" value="${escapeHtml(text)}" placeholder="Nhập tên bước thực hiện..." 
+                    class="sub-text flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500">
+                <button type="button" onclick="this.parentElement.remove()" class="text-slate-400 hover:text-red-500 p-1">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                </button>
+            `;
+            container.appendChild(div);
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        };
+
+        window.editTask = function(taskId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return;
+
+            document.getElementById('task-id').value = task.id;
+            document.getElementById('modal-title').textContent = 'Chỉnh sửa công việc';
+            document.getElementById('task-title').value = task.title;
+            document.getElementById('task-client').value = task.client || '';
+            document.getElementById('task-priority').value = task.priority || 'medium';
+            document.getElementById('task-status').value = task.status || 'doing';
+            document.getElementById('task-deadline').value = task.deadline || '';
+            document.getElementById('task-notes').value = task.notes || '';
+
+            const subContainer = document.getElementById('subtasks-editor');
+            subContainer.innerHTML = '';
+            (task.subtasks || []).forEach(sub => addSubtaskInput(sub.text, sub.done));
+
+            document.getElementById('task-modal').classList.remove('hidden');
+            document.getElementById('task-modal').classList.add('flex');
+        };
+
+        window.saveTask = async function(e) {
+            e.preventDefault();
+            const existingId = document.getElementById('task-id').value;
+            const id = existingId || ('job_' + Date.now());
+
+            const subtasks = [];
+            document.querySelectorAll('#subtasks-editor > div').forEach(row => {
+                const text = row.querySelector('.sub-text').value.trim();
+                const done = row.querySelector('.sub-done').checked;
+                if (text) subtasks.push({ text, done });
+            });
+
+            const taskData = {
+                id,
+                title: document.getElementById('task-title').value.trim(),
+                client: document.getElementById('task-client').value.trim(),
+                priority: document.getElementById('task-priority').value,
+                status: document.getElementById('task-status').value,
+                deadline: document.getElementById('task-deadline').value,
+                notes: document.getElementById('task-notes').value.trim(),
+                subtasks,
+                createdAt: existingId ? (tasks.find(t => t.id === existingId)?.createdAt || Date.now()) : Date.now()
+            };
+
+            await persistTask(taskData);
+            closeTaskModal();
+            showToast(existingId ? "Đã cập nhật công việc" : "Đã thêm Job mới");
+        };
+
+        window.requestNotificationPermission = async function() {
+            if (!("Notification" in window)) {
+                showToast("Trình duyệt không hỗ trợ thông báo đẩy");
+                return;
+            }
+            const permission = await Notification.requestPermission();
+            if (permission === "granted") {
+                showToast("Đã bật thông báo nhắc deadline!");
+                document.getElementById('notif-badge').classList.remove('hidden');
+                checkDeadlines();
+            } else {
+                showToast("Bạn đã từ chối quyền thông báo");
+            }
+        };
+
+        function checkDeadlines() {
+            const now = new Date();
+            tasks.forEach(task => {
+                if (task.status === 'done' || !task.deadline || notifiedTaskIds.has(task.id)) return;
+                const deadline = new Date(task.deadline);
+                const diffMinutes = (deadline - now) / (1000 * 60);
+
+                if (diffMinutes <= 60 && diffMinutes >= -30) {
+                    notifiedTaskIds.add(task.id);
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification("⏰ Nhắc nhở Deadline - JobFlow Pro", {
+                            body: `Công việc "${task.title}" sắp đến hạn (${deadline.toLocaleTimeString('vi-VN', {hour: '2-digit', minute:'2-digit'})})!`
+                        });
+                    }
+                }
+            });
+        }
+
+        setInterval(checkDeadlines, 60000);
+
+        window.openSyncModal = function() {
+            document.getElementById('sync-modal').classList.remove('hidden');
+            document.getElementById('sync-modal').classList.add('flex');
+        };
+
+        window.closeSyncModal = function() {
+            document.getElementById('sync-modal').classList.add('hidden');
+            document.getElementById('sync-modal').classList.remove('flex');
+        };
+
+        window.copyWorkspaceId = function() {
+            const text = document.getElementById('workspace-id-display').textContent;
+            const tempInput = document.createElement('input');
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            showToast("Đã sao chép mã đồng bộ!");
+        };
+
+        window.switchWorkspace = function() {
+            const newId = document.getElementById('custom-workspace-input').value.trim();
+            if (!newId) return;
+            workspaceId = newId;
+            localStorage.setItem('jobflow_workspace_id', newId);
+            window.location.hash = `sync=${newId}`;
+            document.getElementById('workspace-id-display').textContent = workspaceId;
+            if (useCloud && currentUser) subscribeToTasks();
+            else loadLocalFallback();
+            closeSyncModal();
+            showToast("Đã kết nối không gian làm việc mới!");
+        };
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+
+        let deferredPrompt = null;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            const installBtn = document.getElementById('install-app-btn');
+            if (installBtn) {
+                installBtn.classList.remove('hidden');
+                installBtn.classList.add('flex');
+            }
+        });
+
+        window.installPWA = async function() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                showToast("Đang cài đặt JobFlow Pro lên thiết bị...");
+                document.getElementById('install-app-btn').classList.add('hidden');
+            }
+            deferredPrompt = null;
+        };
+
+        window.addEventListener('appinstalled', () => {
+            showToast("Cài đặt ứng dụng thành công! 🎉");
+            const installBtn = document.getElementById('install-app-btn');
+            if (installBtn) installBtn.classList.add('hidden');
+        });
+    </script>
+</body>
+</html>
